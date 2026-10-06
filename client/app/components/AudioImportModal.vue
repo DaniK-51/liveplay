@@ -25,7 +25,7 @@
           <p class="hint">{{ t('importAudio.serverHint') }}</p>
 
           <!-- Local file picker: only shown on local server (Electron only) -->
-          <template v-if="server.isLocalServer && hasElectron">
+          <template v-if="server.isLocalServer && isElectronHost()">
             <div class="divider">{{ t('importAudio.orFromComputer') }}</div>
             <div class="row">
               <button class="btn primary" :disabled="pickingLocal" @click="pickLocal">
@@ -103,6 +103,7 @@
 import { computed, ref } from 'vue';
 import { useLiveplayServer } from '~/composables/useLiveplayServer';
 import ServerFileBrowser from '~/components/ServerFileBrowser.vue';
+import { isElectronHost } from '~/utils/isElectronHost';
 
 defineProps<{ open: boolean }>();
 const emit  = defineEmits<{
@@ -126,7 +127,7 @@ const selectedUploaded    = ref<string[]>([]);
 const uploadedAnchor      = { i: -1 };
 
 // Local file picker (used when server is local — same machine, so local paths = server paths)
-const hasElectron = !!(globalThis as any).electronAPI?.selectAudioFiles;
+const hasElectron = isElectronHost();
 const localPicked  = ref<string[]>([]);
 const selectedLocal = ref<string[]>([]);
 const localAnchor   = { i: -1 };

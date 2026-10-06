@@ -274,6 +274,9 @@ struct CliOptions {
     // appear without the posture changing on upgrade.
     std::vector<std::string>                 fs_browse_roots;   // empty = unrestricted
     std::optional<std::string>               cors_allow_origin; // unset = "*"
+    // Browser UI root at /web. Unset = auto-discover next to the executable;
+    // empty string after discovery = not hosted.
+    std::optional<std::string>               web_root;
 
     // Refuse every write to liveplay.json through the API (R3). Off by default,
     // like every other posture knob in this server.
@@ -709,6 +712,12 @@ CliOptions parse_cli(int argc, char** argv, const std::filesystem::path& exe_dir
             if (const char* v = next_value()) {
                 if (*v) { opts.cors_allow_origin = std::string{v}; opts.mark("corsOrigin", cli); }
             }
+        } else if (a == "--web-root") {
+            if (const char* v = next_value()) {
+                // Empty --web-root "" disables hosting even if a bundle is present.
+                opts.web_root = std::string{v};
+                opts.mark("webRoot", cli);
+            }
         } else if (a == "--verbose" || a == "-v") {
             opts.verbose = true;
             opts.mark("verbose", cli);
@@ -741,6 +750,8 @@ CliOptions parse_cli(int argc, char** argv, const std::filesystem::path& exe_dir
                 "                        Unset, the API can reach the whole filesystem.\n"
                 "      --cors-origin <origin>  Access-Control-Allow-Origin value\n"
                 "                        (default \"*\", i.e. any origin may call this server)\n"
+                "      --web-root <path>  Serve the browser UI (Nuxt client) from <path> at /web.\n"
+                "                        Unset, looks next to the executable (web/). Empty disables.\n"
                 "      --lock-server-config  Refuse every write to liveplay.json through\n"
                 "                        the API, and make the settings page read-only.\n"
                 "                        Set it on a machine whose posture is not the\n"
@@ -1184,6 +1195,38 @@ int main(int argc, char** argv) {
     if (opts.max_upload_bytes)   server_cfg.max_upload_bytes   = *opts.max_upload_bytes;
     server_cfg.fs_browse_roots = opts.fs_browse_roots;
     if (opts.cors_allow_origin)  server_cfg.cors_allow_origin  = *opts.cors_allow_origin;
+
+    // Browser UI at /web. Look for a built client bundle beside the executable
+    // (packaged installs drop it at <exe-dir>/web/) or in the working tree for
+    // development. --web-root overrides; an empty value disables hosting.
+    {
+        namespace fs = std::filesystem;
+        std::string web_root;
+        if (opts.web_root) {
+            web_root = *opts.web_root;
+        } else {
+            const fs::path candidates[] = {
+                exe_dir / "web",                              // packaged: server-bin/web
+                exe_dir / "web" / "dist",
+                exe_dir / ".." / "web",                       // packaged: resources/web
+                exe_dir / ".." / "resources" / "web",
+                fs::current_path() / "client" / ".output" / "public",
+            };
+            for (const auto& c : candidates) {
+                std::error_code ec;
+                if (fs::is_regular_file(c / "index.html", ec) && !ec) {
+                    web_root = liveplay::util::path_to_utf8(fs::weakly_canonical(c, ec));
+                    break;
+                }
+            }
+        }
+        server_cfg.web_root = web_root;
+        if (!web_root.empty()) {
+            Logger::success("Browser UI at http://{}:{}/web  (root: {})",
+                            opts.bind_addr == "0.0.0.0" ? "127.0.0.1" : opts.bind_addr,
+                            opts.port, web_root);
+        }
+    }
 
     // What is actually in force, and who set it. Built here because this is the
     // only place that has seen all four tiers resolve; the control server just

@@ -310,6 +310,8 @@ bool is_audio_file(const fs::path& p) {
 // before start() opens the socket, and only read afterwards — there is one
 // ControlServer per process.
 std::string  g_cors_allow_origin = "*";
+// Browser UI root (ControlServerConfig::web_root). Empty = not hosted.
+std::string  g_web_root;
 // Same lifetime, same reason: the path guard is called from a dozen handlers.
 std::vector<std::string> g_fs_browse_roots{};
 
@@ -479,6 +481,96 @@ crow::response head_probe_ok() {
 // turns the error into a probe that confirms what exists.
 crow::response json_fs_denied() {
     return json_err(403, "path is outside the server's permitted directories");
+}
+
+// ---------------------------------------------------------------------------
+// Browser UI static files (/web)
+// ---------------------------------------------------------------------------
+// Serves the built Nuxt client at GET /web and GET /web/*, plus its assets.
+// Public (see access_for) so a tablet can load the page before login; /api
+// and /ws still enforce credentials. The SPA then talks to THIS origin —
+// there is no server picker in that mode by design.
+//
+// Path safety: the request path is resolved under g_web_root and the result
+// must stay there after weakly_canonical.
+static std::string web_mime_for(const std::string& path) {
+    const auto dot = path.rfind('.');
+    if (dot == std::string::npos) return "application/octet-stream";
+    std::string ext = path.substr(dot + 1);
+    for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (ext == "html" || ext == "htm") return "text/html; charset=utf-8";
+    if (ext == "js"   || ext == "mjs") return "text/javascript; charset=utf-8";
+    if (ext == "css")  return "text/css; charset=utf-8";
+    if (ext == "json") return "application/json";
+    if (ext == "svg")  return "image/svg+xml";
+    if (ext == "png")  return "image/png";
+    if (ext == "jpg" || ext == "jpeg") return "image/jpeg";
+    if (ext == "webp") return "image/webp";
+    if (ext == "ico")  return "image/x-icon";
+    if (ext == "woff2") return "font/woff2";
+    if (ext == "woff")  return "font/woff";
+    if (ext == "map")   return "application/json";
+    return "application/octet-stream";
+}
+
+static crow::response serve_web_file(const std::string& url_path) {
+    if (g_web_root.empty()) {
+        return json_err(404, "browser UI is not installed on this server");
+    }
+    namespace util = liveplay::util;
+
+    std::string path = url_path;
+    if (const auto q = path.find_first_of("?#"); q != std::string::npos)
+        path = path.substr(0, q);
+
+    // /web without a trailing slash would make every relative asset URL
+    // (./_nuxt/..., ./locales/...) resolve against the origin root. Send the
+    // shell to /web/index.html instead of /web/ — Crow treats /web and /web/
+    // as one route and rejects the second registration.
+    if (path == "/web" || path == "/web/") {
+        crow::response r{302};
+        r.add_header("Location", "/web/index.html");
+        return r;
+    }
+
+    // Strip the /web/ prefix; the bundle is rooted at web_root.
+    if (path.rfind("/web/", 0) == 0)      path = path.substr(5);
+    else if (path.rfind("/web", 0) == 0)  path = path.substr(4);
+
+    // SPA entry points and extension-less deep links fall back to index.html.
+    auto has_ext = [](const std::string& p) {
+        const auto slash = p.find_last_of('/');
+        const auto base  = (slash == std::string::npos) ? p : p.substr(slash + 1);
+        return base.find('.') != std::string::npos;
+    };
+    if (path.empty() || path == "/" || !has_ext(path)) path = "/index.html";
+
+    while (!path.empty() && path.front() == '/') path.erase(path.begin());
+
+    const fs::path root = util::utf8_to_path(g_web_root);
+    fs::path full = root / util::utf8_to_path(path);
+    std::error_code ec;
+    const fs::path canon  = fs::weakly_canonical(full, ec);
+    const fs::path root_c = fs::weakly_canonical(root, ec);
+    if (ec || canon.string().rfind(root_c.string(), 0) != 0) {
+        return json_err(403, "path is outside the browser UI root");
+    }
+    if (!fs::is_regular_file(canon, ec) || ec) {
+        return json_err(404, "not found");
+    }
+
+    std::ifstream in(canon, std::ios::binary);
+    if (!in) return json_err(404, "not found");
+    std::string body((std::istreambuf_iterator<char>(in)),
+                     std::istreambuf_iterator<char>());
+
+    crow::response r{200, std::move(body)};
+    r.add_header("Content-Type", web_mime_for(canon.string()));
+    r.add_header("Access-Control-Allow-Origin", g_cors_allow_origin);
+    // Hashed asset filenames can cache hard; the shell must not.
+    if (path == "index.html") r.add_header("Cache-Control", "no-cache");
+    else                      r.add_header("Cache-Control", "public, max-age=31536000, immutable");
+    return r;
 }
 
 // Why a bus output was refused, in words the operator can act on. Every one of
@@ -801,6 +893,12 @@ static AuthGuard::Access access_for(std::string_view path) {
     //   status  — "do I need to log in at all?", which cannot itself need a login
     //   login   — the door
     if (path == "/api/health")      return AuthGuard::Access::Public;
+    // Browser UI shell + assets. Public so a tablet can load the page before
+    // it has a credential — the SPA then talks to /api and /ws, which still
+    // guard themselves. Only /web and /web/*; everything else stays under the
+    // default deny so an anonymous caller cannot map the route table.
+    if (path == "/web" || path.rfind("/web/", 0) == 0)
+        return AuthGuard::Access::Public;
     if (path == "/api/auth/status") return AuthGuard::Access::Public;
     if (path == "/api/auth/login")  return AuthGuard::Access::Public;
 
@@ -928,6 +1026,17 @@ void AuthGuard::after_handle(crow::request& req, crow::response& res, context&) 
 void AuthGuard::before_handle(crow::request& req, crow::response& res, context& ctx) {
     if (!users) return;
 
+    // `/web/` never reaches a rule: Crow's exact `/web` does not match a
+    // trailing slash, and `/web/<path>` rejects an empty segment. Send it to
+    // the shell so a human-typed http://host:4480/web/ works. `/web` itself
+    // is routed and redirects the same way inside serve_web_file.
+    if (req.url == "/web/" || req.url.rfind("/web/?", 0) == 0) {
+        res = crow::response{302};
+        res.add_header("Location", "/web/index.html");
+        res.end();
+        return;
+    }
+
     // A CORS preflight carries no credentials by design — the browser strips
     // them — so refusing it would only turn every cross-origin call into an
     // opaque failure with the wrong cause on the console.
@@ -1007,6 +1116,7 @@ ControlServer::ControlServer(audio::AudioEngine& engine,
     // before start() opens the socket, so nothing can observe a half-set value.
     g_cors_allow_origin = cfg_.cors_allow_origin.empty() ? "*" : cfg_.cors_allow_origin;
     g_fs_browse_roots   = cfg_.fs_browse_roots;
+    g_web_root          = cfg_.web_root;
     // Same reasoning, same moment: the guard has to know where to look up a
     // token before any request can arrive.
     impl_->app.get_middleware<AuthGuard>().users = &users_;
@@ -2092,6 +2202,16 @@ void ControlServer::install_routes() {
     // them to a rule, so the CORS headers are added in AuthGuard::after_handle.
 
     // ---- Health ----
+    // ---- Browser UI at /web (public static SPA) ----
+    // Operators open http://<host>:<port>/web and talk to this same origin.
+    CROW_ROUTE(app, "/web").methods(crow::HTTPMethod::Get)
+        ([](const crow::request& req){ return serve_web_file(req.url); });
+    // Only one /web rule: Crow treats `/web` and `/web/` as the same
+    // registration ("handler already exists for /web"). The handler
+    // 302s both to /web/index.html, and `/web/<path>` covers assets.
+    CROW_ROUTE(app, "/web/<path>").methods(crow::HTTPMethod::Get)
+        ([](const crow::request& req, std::string){ return serve_web_file(req.url); });
+
     CROW_ROUTE(app, "/api/health").methods(crow::HTTPMethod::Get)
         ([] {
             try { return json_ok(json({{"ok", true}, {"name", "liveplay-server"}})); }

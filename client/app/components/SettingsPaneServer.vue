@@ -5,12 +5,10 @@
 
     <!-- ================================================================
          1. This client's connection.
-         Electron's own config, NOT liveplay.json: which server this app
-         talks to is a property of the installation in front of you, it
-         has to be changeable while disconnected, and userData is writable
-         where the directory beside the server binary may not be.
+         Hidden when the page is served from a LivePlay server's own /web:
+         that server IS the target — there is nothing to choose.
          ================================================================ -->
-    <section class="settings-field">
+    <section v-if="!isSameOriginWeb()" class="settings-field">
       <label class="settings-label">
         <span class="material-symbols-rounded">lan</span>
         {{ t('serverSettings.title') }}
@@ -200,14 +198,17 @@
 // Outputs pane in P3c, where hardware belongs now that buses and the output map
 // exist; the serverSettings.outputDevices / open / noDevices keys stay in the
 // locales for it rather than being removed and re-added.
+import { isElectronHost, isSameOriginWeb } from '~/utils/isElectronHost';
 const { t } = useLocalization();
 const server = useLiveplayServer();
 
 const electronApi: any = (globalThis as any).electronAPI?.liveplayServer;
-const hasElectron = !!electronApi;
+// Duck-typing `!!electronApi` is no longer enough: the browser bridge installs
+// a stub so call sites don't crash. Local-mode UI is Electron-only.
+const hasElectron = isElectronHost();
 
 // ---- 1. Connection ---------------------------------------------------
-const draftMode      = ref<'local' | 'remote'>('local');
+const draftMode      = ref<'local' | 'remote'>(hasElectron ? 'local' : 'remote');
 const draftRemoteUrl = ref('http://127.0.0.1:4480');
 const draftLocalPort = ref(4480);
 const serverStatus   = ref<{ running: boolean; pid?: number } | null>(null);
@@ -219,7 +220,7 @@ const statusClass = computed(() => ({
 }));
 
 async function loadConnection() {
-  if (!electronApi) {
+  if (!hasElectron) {
     // A browser cannot spawn a binary, so only remote mode is meaningful.
     draftMode.value = 'remote';
     draftRemoteUrl.value = server.serverUrl;
@@ -234,17 +235,27 @@ async function loadConnection() {
 }
 
 async function applyConnection() {
-  if (electronApi) {
+  const nextUrl = draftRemoteUrl.value.trim();
+  if (hasElectron && electronApi) {
     await electronApi.setConfig({
       mode:      draftMode.value,
-      remoteUrl: draftRemoteUrl.value.trim(),
+      remoteUrl: nextUrl,
       localPort: draftLocalPort.value,
     });
-  } else {
-    server.setServerUrl(draftRemoteUrl.value.trim());
+  }
+  // Only retarget when the address actually changed. setServerUrl() clears
+  // hasEverConnected / authChecked even for a same-URL write, which used to
+  // force a reconnect + project refetch on every Apply click on the desktop.
+  if (nextUrl && !sameServer(nextUrl, server.serverUrl)) {
+    server.setServerUrl(nextUrl);
   }
 }
-async function restartLocal() { if (electronApi) await electronApi.restart(); }
+
+function sameServer(a: string, b: string) {
+  return a.trim().replace(/\/+$/, '') === String(b).trim().replace(/\/+$/, '');
+}
+
+async function restartLocal() { if (hasElectron && electronApi) await electronApi.restart(); }
 
 // ---- 2. This connection's meter rate ---------------------------------
 // Offered as a short list rather than a free number: the useful values are the
@@ -372,7 +383,7 @@ async function save() {
 
 onMounted(() => {
   loadConnection();
-  if (electronApi) {
+  if (hasElectron && electronApi) {
     stopStatusListener = electronApi.onStateChange((p: any) => {
       serverStatus.value = { running: p.running, pid: p.pid };
     });

@@ -139,6 +139,12 @@ struct ControlServerConfig {
     // it to one origin.
     std::string   cors_allow_origin  = "*";
 
+    // Root of the browser UI bundle (`client/.output/public`). When set and
+    // present, GET /web and GET /web/* serve the SPA so operators open
+    // `http://<server-host>:<port>/web` and talk to THIS server — same origin,
+    // no picker. Empty (default) = not hosted; the desktop client is unaffected.
+    std::string   web_root           = "";
+
     // What every schema key resolved to at boot, and which tier supplied each
     // one ("file" / "env" / "cli"; absent means nobody set it and the built-in
     // default stands). Filled by main.cpp, which is the only place that has

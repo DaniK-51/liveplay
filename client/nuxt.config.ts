@@ -37,6 +37,12 @@ export default defineNuxtConfig({
   ],
 
   vite: {
+    define: {
+      // Surfaced by the browser host stub (About / Welcome version chip).
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(
+        process.env.npm_package_version || '2.5.0',
+      ),
+    },
     css: {
       preprocessorOptions: {
         scss: {

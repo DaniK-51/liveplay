@@ -8,21 +8,26 @@ const availableLocalesData = ref<Array<{ code: string; name: string; direction: 
 // other async work in the renderer (e.g. fetch body reads from the server).
 let _loadLocalesPromise: Promise<void> | null = null;
 const loadLocales = async (): Promise<void> => {
-  if (!import.meta.client || !(window as any).electronAPI) return;
+  if (!import.meta.client) return;
   if (_loadLocalesPromise) return _loadLocalesPromise;
   _loadLocalesPromise = (async () => {
     try {
-      const localesList = await (window as any).electronAPI.getAvailableLocales();
-      availableLocalesData.value = localesList;
-      const localePromises = localesList.map(async (locale: any) => {
-        const data = await (window as any).electronAPI.getLocaleData(locale.code);
-        locales.value[locale.code] = data;
+      // Browser bridge resolves the same shape from /locales/*.json.
+      // Electron's preload answers over IPC. Both must be present now that
+      // the browser-bridge plugin installs a stub when preload is missing.
+      const api = (window as any).electronAPI;
+      if (!api?.getAvailableLocales) return;
+      const localesList = await api.getAvailableLocales();
+      availableLocalesData.value = localesList || [];
+      const localePromises = (localesList || []).map(async (locale: any) => {
+        const data = await api.getLocaleData(locale.code);
+        if (data) locales.value[locale.code] = data;
       });
       await Promise.all(localePromises);
       // eslint-disable-next-line no-console
-      console.log(`Dynamically loaded ${Object.keys(locales.value).length} locales`);
+      console.log(`Loaded ${Object.keys(locales.value).length} locales`);
     } catch (error) {
-      console.error('Failed to load locales from main process:', error);
+      console.error('Failed to load locales:', error);
       _loadLocalesPromise = null;   // allow a retry on transient failures
       throw error;
     }
@@ -103,7 +108,7 @@ export const useLocalization = () => {
       if (savedLocale && savedLocale in locales.value) {
         currentLocale.value = savedLocale;
       } else if (window.electronAPI && window.electronAPI.getSystemLocale) {
-        // No saved preference, try to detect system locale
+        // No saved preference — system locale (Electron IPC or browser bridge).
         window.electronAPI.getSystemLocale().then((systemLocale: string) => {
           // Check if we have a translation for this locale
           if (systemLocale in locales.value) {

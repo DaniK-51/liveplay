@@ -22,6 +22,7 @@
         <p class="stage-subtitle">{{ t('welcome.modeSubtitle') }}</p>
         <div class="welcome-actions">
           <button
+            v-if="isElectronHost()"
             class="welcome-button primary"
             :disabled="connecting"
             @click="chooseLocal"
@@ -38,7 +39,12 @@
             </span>
           </button>
 
-          <button class="welcome-button" :disabled="connecting" @click="chooseRemote">
+          <button
+            class="welcome-button"
+            :class="{ primary: !isElectronHost() }"
+            :disabled="connecting"
+            @click="chooseRemote"
+          >
             <span class="button-icon"><span class="material-symbols-rounded">lan</span></span>
             <span class="button-label">
               <span class="button-label-line">{{ t('welcome.remoteMode') }}</span>
@@ -54,10 +60,8 @@
         <h2 class="stage-title">{{ t('welcome.remoteConnect') }}</h2>
         <p class="stage-subtitle">{{ t('welcome.remoteAddressHint') }}</p>
 
-        <!-- Auto-discovered servers on this LAN. Populated by the UDP beacon
-             and active solicitation. Header always shown so the user can
-             rescan even when nothing has been found yet. -->
-        <div class="discovered-servers">
+        <!-- Auto-discovered servers on this LAN (Electron only — UDP beacon). -->
+        <div v-if="isElectronHost()" class="discovered-servers">
           <div class="discovered-header">
             <span class="material-symbols-rounded" :class="{ spin: scanning }">radar</span>
             <span>{{ t('welcome.serversOnThisNetwork') }}</span>
@@ -146,7 +150,8 @@
           {{ mode === 'remote'
               ? t('welcome.connectedTo', { url: serverUrlDisplay })
               : t('welcome.connectedLocal') }}
-          <button class="link-button" @click="changeMode">{{ t('welcome.changeMode') }}</button>
+          <!-- Same-origin /web: this server IS the show — no picker. -->
+          <button v-if="!isSameOriginWeb()" class="link-button" @click="changeMode">{{ t('welcome.changeMode') }}</button>
         </p>
         <div class="welcome-actions">
           <button class="welcome-button primary" @click="handleNewProject">
@@ -230,15 +235,18 @@
 <script setup lang="ts">
 import { version as buildVersion } from '~~/package.json';
 import ServerFilePickerModal from './ServerFilePickerModal.vue';
+import { isElectronHost, isSameOriginWeb } from '~/utils/isElectronHost';
 
 const { createNewProject, openProject, tryRejoinExistingProject } = useProject();
 const { t } = useLocalization();
 const server = useLiveplayServer();
 
 // Three-stage flow: mode picker → (optional remote address) → project picker.
+// In a browser tab there is no local audio-server lifecycle, so we start on
+// the remote path and only offer the address step.
 type Stage = 'mode' | 'remote' | 'project';
 const stage = ref<Stage>('mode');
-const mode  = ref<'local' | 'remote'>('local');
+const mode  = ref<'local' | 'remote'>(isElectronHost() ? 'local' : 'remote');
 
 const remoteAddress   = ref('');
 const connecting      = ref(false);
@@ -359,6 +367,28 @@ onMounted(async () => {
         if (welcomeIntent === 'new') handleNewProject();
         else                          handleOpenProject();
       });
+    } else if (isSameOriginWeb()) {
+      // Served from http://<server>:4480/web — THIS server is the show.
+      // No mode picker, no address entry. Rejoin the open project if any,
+      // otherwise land on the project stage.
+      mode.value = 'remote';
+      server.setServerUrl(location.origin);
+      if (await tryRejoinExistingProject()) return;
+      stage.value = 'project';
+    } else if (!isElectronHost()) {
+      // Standalone browser (dev / hosted elsewhere): remote only, with an
+      // address step. Skip the mode picker when we already have a URL.
+      const saved = (() => {
+        try { return localStorage.getItem('liveplay.serverUrl') || ''; }
+        catch { return ''; }
+      })();
+      mode.value = 'remote';
+      if (saved) {
+        remoteAddress.value = stripScheme(saved);
+        stage.value = 'remote';
+      } else {
+        stage.value = 'mode';
+      }
     } else {
       // Always go through the mode-picker so the user is in control of the
       // current session's server target. We could skip if connected, but the

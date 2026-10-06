@@ -37,6 +37,9 @@ if (process.platform === 'darwin') {
 }
 
 // 3. Client (Nuxt generate + electron-builder) -----------------------------
+//    build:electron already syncs .output/public -> server/build/web so a
+//    standalone liveplay-server hosted at /web uses the same bundle the
+//    installers ship as resources/web.
 run('npm', ['run', 'build:electron', '--workspace=client'], { cwd: REPO_ROOT });
 
 // 4. Collect installers into /build/ at the repo root ----------------------

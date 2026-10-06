@@ -13,6 +13,7 @@ import { defineNuxtPlugin } from 'nuxt/app';
 import { useLiveplayServer } from '~/composables/useLiveplayServer';
 import { useShowControl } from '~/composables/useShowControl';
 import { useConnectionGuard } from '~/composables/useConnectionGuard';
+import { isSameOriginWeb } from '~/utils/isElectronHost';
 
 export default defineNuxtPlugin(async () => {
   const server = useLiveplayServer();
@@ -36,11 +37,23 @@ export default defineNuxtPlugin(async () => {
 
   if (ep) {
     try {
-      const cfg = await ep.getConfig();
-      const url = cfg.mode === 'remote'
-        ? cfg.remoteUrl
-        : `http://127.0.0.1:${cfg.localPort ?? 4480}`;
-      server.setServerUrl(url);   // also reconnects internally
+      // Served from this server's own /web: the origin IS the target.
+      // Do not let a stale config/URL retarget us away from it.
+      if (isSameOriginWeb()) {
+        server.setServerUrl(location.origin);
+      } else {
+        const cfg = await ep.getConfig();
+        const url = (cfg.mode === 'remote' && cfg.remoteUrl)
+          ? cfg.remoteUrl
+          : (cfg.mode === 'local')
+            ? `http://127.0.0.1:${cfg.localPort ?? 4480}`
+            : null;
+        // Only retarget when we have a real address. An empty remoteUrl must
+        // leave the composable's default URL alone — setServerUrl('') would
+        // make the socket dial the page origin.
+        if (url) server.setServerUrl(url);
+        else server.connect();
+      }
     } catch (e) {
       console.warn('[liveplay] failed to read Electron config:', e);
       server.connect();
@@ -48,12 +61,13 @@ export default defineNuxtPlugin(async () => {
 
     // Re-target whenever main process tells us the config changed.
     ep.onStateChange?.((payload: any) => {
+      if (isSameOriginWeb()) return;
       const cfg = payload?.config;
       if (!cfg) return;
       const url = cfg.mode === 'remote'
         ? cfg.remoteUrl
         : `http://127.0.0.1:${cfg.localPort ?? 4480}`;
-      if (url !== server.serverUrl) server.setServerUrl(url);
+      if (url && url !== server.serverUrl) server.setServerUrl(url);
     });
   } else {
     server.connect();

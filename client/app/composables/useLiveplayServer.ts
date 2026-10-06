@@ -23,6 +23,7 @@
 // =====================================================================
 import { reactive, ref, shallowRef, computed } from 'vue';
 import type { Bus, BusDsp } from '~/types/project';
+import { resolveDefaultServerUrl, isSameOriginWeb } from '~/utils/isElectronHost';
 import type {
   CueId,
   DeviceId,
@@ -57,9 +58,9 @@ export function useLiveplayServer() {
 
 function createClient() {
   // ---- Server URL config (persisted via localStorage) ---------------
-  const defaultUrl = (typeof window !== 'undefined' &&
-                      window.localStorage?.getItem('liveplay.serverUrl')) ||
-                     'http://127.0.0.1:4480';
+  // Served from a LivePlay server's own /web → that origin IS the target
+  // (no picker). Otherwise localStorage (remote desktop / browser dev).
+  const defaultUrl = resolveDefaultServerUrl();
   const serverUrl = ref<string>(defaultUrl);
 
   const httpBase = computed(() => serverUrl.value.replace(/\/+$/, ''));
@@ -124,6 +125,13 @@ function createClient() {
     a.trim().replace(/\/+$/, '') === b.trim().replace(/\/+$/, '');
 
   function setServerUrl(url: string) {
+    // Same-origin web (http://host:4480/web): the page IS this server's UI.
+    // Never retarget away — a stale localStorage URL from another session
+    // would send the operator to the wrong house mid-show.
+    if (isSameOriginWeb()) {
+      serverUrl.value = location.origin;
+      return;
+    }
     // Is this a RE-TARGET or just someone naming the server we are already on?
     // Most callers are the latter: the startup plugin hands us whatever the
     // Electron config says on every window's boot, and the welcome screen does

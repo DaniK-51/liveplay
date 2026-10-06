@@ -7,7 +7,7 @@
              carry the names once a narrow pane has dropped the labels. -->
         <div v-if="!showMode" class="playlist-actions">
           <Btn icon="audio_file" :text="t('playlist.importAudio')" :title="t('playlist.importAudio')" :disabled="!currentProject" @click="handleImport" />
-          <Btn icon="youtube_activity" :text="t('youtube.importFromYouTube')" :title="t('youtube.importFromYouTube')" bg-style="youtube" :disabled="!currentProject" @click="showYouTubeModal = true" />
+          <Btn v-if="isElectronHost()" icon="youtube_activity" :text="t('youtube.importFromYouTube')" :title="t('youtube.importFromYouTube')" bg-style="youtube" :disabled="!currentProject" @click="showYouTubeModal = true" />
           <Btn icon="folder" :text="t('playlist.addGroup')" :title="t('playlist.addGroup')" :disabled="!currentProject" @click="handleAddGroup" />
         </div>
         <PaneControls pane="playlist" :divided="!showMode" />
@@ -50,6 +50,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { ref } from 'vue';
 import YouTubeImportModal from './YouTubeImportModal.vue';
+import { isElectronHost } from '~/utils/isElectronHost';
 import AudioImportModal from './AudioImportModal.vue';
 import Btn from './Btn.vue';
 import PaneControls from './PaneControls.vue';

@@ -9,10 +9,10 @@
     "dev": "concurrently \"npm run dev:nuxt\" \"npm run dev:electron\"",
     "dev:nuxt": "nuxt dev",
     "dev:electron": "wait-on http://localhost:3000 && electron .",
-    "build": "cross-env NODE_ENV=production nuxt generate",
-    "build:electron": "cross-env NODE_ENV=production nuxt generate && electron-builder",
+    "build": "cross-env NODE_ENV=production nuxt generate && node ../scripts/sync-web-root.js",
+    "build:electron": "cross-env NODE_ENV=production nuxt generate && node ../scripts/sync-web-root.js && electron-builder",
     "electron:build": "electron-builder",
-    "generate": "cross-env NODE_ENV=production nuxt generate",
+    "generate": "cross-env NODE_ENV=production nuxt generate && node ../scripts/sync-web-root.js",
     "preview": "nuxt preview"
   },
   "keywords": [
@@ -110,6 +110,10 @@
             "liveplay-server.exe",
             "*.dll"
           ]
+        },
+        {
+          "from": ".output/public",
+          "to": "web"
         }
       ]
     },
@@ -141,6 +145,10 @@
         {
           "from": "../server/build/liveplay-server",
           "to": "server-bin/liveplay-server"
+        },
+        {
+          "from": ".output/public",
+          "to": "web"
         }
       ]
     },
@@ -196,6 +204,10 @@
         {
           "from": "../server/build/liveplay-server",
           "to": "server-bin/liveplay-server"
+        },
+        {
+          "from": ".output/public",
+          "to": "web"
         }
       ]
     }
