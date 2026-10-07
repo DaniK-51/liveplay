@@ -513,6 +513,18 @@ static std::string web_mime_for(const std::string& path) {
     return "application/octet-stream";
 }
 
+// True when `p` is `root` itself or lives under `root` (segment-wise).
+// String-prefix checks are not enough: `<root>-evil` shares a prefix with
+// `<root>` but is a sibling directory.
+static bool path_is_within(const fs::path& root, const fs::path& p) {
+    auto r = root.begin();
+    auto c = p.begin();
+    for (; r != root.end(); ++r, ++c) {
+        if (c == p.end() || *c != *r) return false;
+    }
+    return true;
+}
+
 static crow::response serve_web_file(const std::string& url_path) {
     if (g_web_root.empty()) {
         return json_err(404, "browser UI is not installed on this server");
@@ -547,15 +559,34 @@ static crow::response serve_web_file(const std::string& url_path) {
 
     while (!path.empty() && path.front() == '/') path.erase(path.begin());
 
-    const fs::path root = util::utf8_to_path(g_web_root);
-    fs::path full = root / util::utf8_to_path(path);
-    std::error_code ec;
-    const fs::path canon  = fs::weakly_canonical(full, ec);
-    const fs::path root_c = fs::weakly_canonical(root, ec);
-    if (ec || canon.string().rfind(root_c.string(), 0) != 0) {
+    // Reject parent-directory segments before touching the filesystem.
+    const fs::path rel = util::utf8_to_path(path);
+    for (const auto& part : rel) {
+        if (part == "..") {
+            return json_err(403, "path is outside the browser UI root");
+        }
+    }
+
+    // Resolve symlinks on the root first, then on the file. Separate error
+    // codes so a failure on one cannot be overwritten by the other.
+    std::error_code root_ec;
+    const fs::path root_c = fs::canonical(util::utf8_to_path(g_web_root), root_ec);
+    if (root_ec) {
+        return json_err(404, "browser UI root is unavailable");
+    }
+
+    std::error_code file_ec;
+    const fs::path canon = fs::canonical(root_c / rel, file_ec);
+    if (file_ec) {
+        // Missing file, or a symlink whose target is out of reach.
+        return json_err(404, "not found");
+    }
+    if (!path_is_within(root_c, canon)) {
         return json_err(403, "path is outside the browser UI root");
     }
-    if (!fs::is_regular_file(canon, ec) || ec) {
+
+    std::error_code stat_ec;
+    if (!fs::is_regular_file(canon, stat_ec) || stat_ec) {
         return json_err(404, "not found");
     }
 
