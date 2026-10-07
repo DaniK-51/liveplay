@@ -13,7 +13,7 @@ import { defineNuxtPlugin } from 'nuxt/app';
 import { useLiveplayServer } from '~/composables/useLiveplayServer';
 import { useShowControl } from '~/composables/useShowControl';
 import { useConnectionGuard } from '~/composables/useConnectionGuard';
-import { isSameOriginWeb } from '~/utils/isElectronHost';
+import { isHostedWebRemote } from '~/utils/host';
 
 export default defineNuxtPlugin(async () => {
   const server = useLiveplayServer();
@@ -39,7 +39,7 @@ export default defineNuxtPlugin(async () => {
     try {
       // Served from this server's own /web: the origin IS the target.
       // Do not let a stale config/URL retarget us away from it.
-      if (isSameOriginWeb()) {
+      if (isHostedWebRemote()) {
         server.setServerUrl(location.origin);
       } else {
         const cfg = await ep.getConfig();
@@ -61,7 +61,7 @@ export default defineNuxtPlugin(async () => {
 
     // Re-target whenever main process tells us the config changed.
     ep.onStateChange?.((payload: any) => {
-      if (isSameOriginWeb()) return;
+      if (isHostedWebRemote()) return;
       const cfg = payload?.config;
       if (!cfg) return;
       const url = cfg.mode === 'remote'

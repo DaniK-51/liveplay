@@ -22,7 +22,7 @@
         <p class="stage-subtitle">{{ t('welcome.modeSubtitle') }}</p>
         <div class="welcome-actions">
           <button
-            v-if="isElectronHost()"
+            v-if="isDesktopHost()"
             class="welcome-button primary"
             :disabled="connecting"
             @click="chooseLocal"
@@ -41,7 +41,7 @@
 
           <button
             class="welcome-button"
-            :class="{ primary: !isElectronHost() }"
+            :class="{ primary: !isDesktopHost() }"
             :disabled="connecting"
             @click="chooseRemote"
           >
@@ -61,7 +61,7 @@
         <p class="stage-subtitle">{{ t('welcome.remoteAddressHint') }}</p>
 
         <!-- Auto-discovered servers on this LAN (Electron only — UDP beacon). -->
-        <div v-if="isElectronHost()" class="discovered-servers">
+        <div v-if="isDesktopHost()" class="discovered-servers">
           <div class="discovered-header">
             <span class="material-symbols-rounded" :class="{ spin: scanning }">radar</span>
             <span>{{ t('welcome.serversOnThisNetwork') }}</span>
@@ -151,7 +151,7 @@
               ? t('welcome.connectedTo', { url: serverUrlDisplay })
               : t('welcome.connectedLocal') }}
           <!-- Same-origin /web: this server IS the show — no picker. -->
-          <button v-if="!isSameOriginWeb()" class="link-button" @click="changeMode">{{ t('welcome.changeMode') }}</button>
+          <button v-if="!isHostedWebRemote()" class="link-button" @click="changeMode">{{ t('welcome.changeMode') }}</button>
         </p>
         <div class="welcome-actions">
           <button class="welcome-button primary" @click="handleNewProject">
@@ -235,7 +235,7 @@
 <script setup lang="ts">
 import { version as buildVersion } from '~~/package.json';
 import ServerFilePickerModal from './ServerFilePickerModal.vue';
-import { isElectronHost, isSameOriginWeb } from '~/utils/isElectronHost';
+import { isDesktopHost, isHostedWebRemote } from '~/utils/host';
 
 const { createNewProject, openProject, tryRejoinExistingProject } = useProject();
 const { t } = useLocalization();
@@ -246,7 +246,7 @@ const server = useLiveplayServer();
 // the remote path and only offer the address step.
 type Stage = 'mode' | 'remote' | 'project';
 const stage = ref<Stage>('mode');
-const mode  = ref<'local' | 'remote'>(isElectronHost() ? 'local' : 'remote');
+const mode  = ref<'local' | 'remote'>(isDesktopHost() ? 'local' : 'remote');
 
 const remoteAddress   = ref('');
 const connecting      = ref(false);
@@ -367,7 +367,7 @@ onMounted(async () => {
         if (welcomeIntent === 'new') handleNewProject();
         else                          handleOpenProject();
       });
-    } else if (isSameOriginWeb()) {
+    } else if (isHostedWebRemote()) {
       // Served from http://<server>:4480/web — THIS server is the show.
       // No mode picker, no address entry. Rejoin the open project if any,
       // otherwise land on the project stage.
@@ -375,7 +375,7 @@ onMounted(async () => {
       server.setServerUrl(location.origin);
       if (await tryRejoinExistingProject()) return;
       stage.value = 'project';
-    } else if (!isElectronHost()) {
+    } else if (!isDesktopHost()) {
       // Standalone browser (dev / hosted elsewhere): remote only, with an
       // address step. Skip the mode picker when we already have a URL.
       const saved = (() => {

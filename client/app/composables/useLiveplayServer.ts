@@ -23,7 +23,7 @@
 // =====================================================================
 import { reactive, ref, shallowRef, computed } from 'vue';
 import type { Bus, BusDsp } from '~/types/project';
-import { resolveDefaultServerUrl, isSameOriginWeb } from '~/utils/isElectronHost';
+import { defaultServerUrl, isHostedWebRemote, isSameServerUrl } from '~/utils/host';
 import type {
   CueId,
   DeviceId,
@@ -60,7 +60,7 @@ function createClient() {
   // ---- Server URL config (persisted via localStorage) ---------------
   // Served from a LivePlay server's own /web → that origin IS the target
   // (no picker). Otherwise localStorage (remote desktop / browser dev).
-  const defaultUrl = resolveDefaultServerUrl();
+  const defaultUrl = defaultServerUrl();
   const serverUrl = ref<string>(defaultUrl);
 
   const httpBase = computed(() => serverUrl.value.replace(/\/+$/, ''));
@@ -121,14 +121,11 @@ function createClient() {
 
   // Trailing slashes and surrounding space are not a different server; httpBase
   // already strips them off everything we actually send.
-  const sameServer = (a: string, b: string) =>
-    a.trim().replace(/\/+$/, '') === b.trim().replace(/\/+$/, '');
-
   function setServerUrl(url: string) {
     // Same-origin web (http://host:4480/web): the page IS this server's UI.
     // Never retarget away — a stale localStorage URL from another session
     // would send the operator to the wrong house mid-show.
-    if (isSameOriginWeb()) {
+    if (isHostedWebRemote()) {
       serverUrl.value = location.origin;
       return;
     }
@@ -137,7 +134,7 @@ function createClient() {
     // Electron config says on every window's boot, and the welcome screen does
     // the same on its way into a project. Only a genuine change may touch the
     // credential below, which is why this is measured before anything moves.
-    const retarget = !sameServer(url, serverUrl.value);
+    const retarget = !isSameServerUrl(url, serverUrl.value);
 
     serverUrl.value = url;
     if (typeof window !== 'undefined') {

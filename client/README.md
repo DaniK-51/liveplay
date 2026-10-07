@@ -34,9 +34,34 @@ Detached cart/mixer windows are additional controllers of the same server. Windo
 | `app/composables/useWorkspaceLayout.ts`, `useMixerView.ts` | Local workspace arrangement |
 | `app/composables/useUiMode.ts` | Per-machine editing/show view |
 | `app/composables/useLocalization.ts` | Translations and locale |
+| `app/plugins/host-bridge.client.ts` | Picks the desktop bridge (Electron preload vs browser stub) |
+| `app/utils/host.ts` | Host/target detection (`isDesktopHost`, `isHostedWebRemote`, …) |
 | `app/utils/` | Meter geometry, DSP display math and shared UI helpers |
 | `locales/` | Application locale JSON |
 | `tests/` | Window-bounds and settings-placement checks |
+
+### Host and target (`app/utils/host.ts`)
+
+The renderer runs on one of two **hosts**, each providing the same
+`window.electronAPI` contract:
+
+| | Desktop | Browser |
+|---|---|---|
+| Bridge | `electron/preload.js` → IPC → `main.js` | stub from `host-bridge.client.ts` |
+| Local server, YouTube, LAN discovery, updates, native dialogs | on | off (UI hidden) |
+| Show control (playlist, transport, mixer, prefs) | on | on |
+
+| Helper | Use when |
+|---|---|
+| `isDesktopHost()` | Showing desktop-only UI (Local mode, YouTube import, …) |
+| `isBrowserHost()` | Browser-only fallbacks |
+| `isHostedWebRemote()` | Page came from a server’s `/web` — bind to `location.origin`, hide server picker |
+| `defaultServerUrl()` | Initial LivePlay server URL for this host |
+| `isSameServerUrl(a, b)` | Compare URLs without trailing-slash noise |
+| `liveplayHost()` | Need the `Desktop`/`Browser` token itself |
+
+Do **not** duck-type `window.electronAPI`: the browser host installs a stub
+with the same method names. Gate on `isDesktopHost()` / `isHostedWebRemote()`.
 
 Settings panes are Appearance, Playback, Audio, Mixer, Outputs, Keyboard, Surfaces, Project, Server, Users and About. Keep hardware mapping in Outputs and boot policy in Server; use the ownership guide when adding a field.
 

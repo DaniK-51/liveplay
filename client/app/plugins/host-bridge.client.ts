@@ -1,19 +1,21 @@
-// =====================================================================
-// plugins/browser-bridge.client.ts
-// ---------------------------------------------------------------------
-// When the renderer runs in a plain browser there is no preload.js, so
-// `window.electronAPI` is missing and call sites either throw or silently
-// skip work that later assumes success (notably locales).
+// ============================================================================
+// plugins/host-bridge.client.ts
+// ----------------------------------------------------------------------------
+// Chooses which desktop-capability bridge this renderer uses, then installs
+// the browser implementation if the Electron preload did not.
 //
-// This plugin installs a no-op bridge BEFORE any component mounts. Every
-// method resolves to an empty success / empty list / no-op unsubscribe so
-// the desktop UI can boot unchanged with Electron-only features disabled.
-// A few methods have real web implementations (locale, openExternal, version).
+// Desktop (preload.js already exposed window.electronAPI with liveplayServer):
+//   host = 'desktop' — leave the real bridge alone. isDesktopHost() is true.
 //
-// Detection: `isElectronHost()` is false when we installed the stub. UI that
-// must hide desktop-only chrome (local server, updates, YouTube, native
-// dialogs) should use that flag rather than duck-typing method presence.
-// =====================================================================
+// Browser (no preload):
+//   host = 'browser' — replace the gap with a stub of the same electronAPI
+//   surface so call sites never throw. Most methods are no-ops; locales,
+//   openExternal and version have real web implementations.
+//
+// UI gating goes through app/utils/host.ts (isDesktopHost / isBrowserHost /
+// isHostedWebRemote). Never duck-type window.electronAPI: the stub has the
+// same method names on purpose.
+// ============================================================================
 import { defineNuxtPlugin } from 'nuxt/app';
 
 /** Resolve to empty success — the shape preload's invoke handlers return. */
@@ -30,8 +32,9 @@ const noUnsub = () => {
 const noListener = (..._args: any[]) => noUnsub;
 
 function buildStub() {
-  // Locales ship as static JSON under /locales/ (copied from client/locales).
-  // Loaded lazily so first paint is not blocked on 21 files.
+  // Locales ship as static JSON under /locales/ (staged at build from
+  // client/locales by scripts/sync-web-root.js). Loaded lazily so first
+  // paint is not blocked on 21 files.
   let localeIndex: Array<{ code: string; name: string; direction: string }> | null = null;
   const localeData = new Map<string, any>();
 
@@ -239,11 +242,12 @@ export default defineNuxtPlugin(() => {
 
   const g = globalThis as any;
   if (g.electronAPI?.liveplayServer) {
-    // Real preload bridge — do not touch.
-    g.__liveplayHostKind = 'electron';
+    // Real Electron preload bridge — do not touch.
+    g.__liveplayHost = 'desktop';
     return;
   }
 
-  g.__liveplayHostKind = 'browser';
+  // Browser (or an Electron shell without our preload): stub the contract.
+  g.__liveplayHost = 'browser';
   g.electronAPI = buildStub();
 });

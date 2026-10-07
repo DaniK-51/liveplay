@@ -14,7 +14,7 @@ const loadLocales = async (): Promise<void> => {
     try {
       // Browser bridge resolves the same shape from /locales/*.json.
       // Electron's preload answers over IPC. Both must be present now that
-      // the browser-bridge plugin installs a stub when preload is missing.
+      // the host-bridge plugin installs a stub when preload is missing.
       const api = (window as any).electronAPI;
       if (!api?.getAvailableLocales) return;
       const localesList = await api.getAvailableLocales();
