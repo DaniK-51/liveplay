@@ -153,7 +153,16 @@ function createClient() {
       // hasEverConnected (that forced a project refetch on every Apply click).
       // Still refresh the auth posture: same URL does not mean the same
       // account list, since people can sign in and out since the last ask.
-      void checkAuth().then(() => { if (!needsLogin.value) connect(); });
+      void checkAuth().then(() => {
+        if (needsLogin.value) return;
+        // If the socket is missing or wedged (CONNECTING forever after a
+        // failed dial), a bare connect() no-ops and the UI stays locked out
+        // of project open / file browse. Clear the dead handle first.
+        if (!connected.value) {
+          disconnect();
+          connect();
+        }
+      });
       return;
     }
 

@@ -366,7 +366,7 @@ watch(() => props.open, (o) => {
 
 <style lang="scss" scoped>
 .picker-backdrop {
-  position: fixed; inset: 0; z-index: 9100;
+  position: fixed; inset: 0; z-index: 9550;
   background: rgba(0,0,0,0.6);
   display: flex; align-items: center; justify-content: center;
 }

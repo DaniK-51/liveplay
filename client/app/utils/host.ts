@@ -42,7 +42,15 @@ export function liveplayHost(): LiveplayHost {
  * discovery, native dialogs and updates may be shown.
  */
 export function isDesktopHost(): boolean {
-  return readHost() === 'desktop';
+  const g = globalThis as any;
+  const host = g[HOST_KEY];
+  if (host === 'desktop') return true;
+  if (host === 'browser') return false;
+  // host-bridge has not run (or bailed early). A real preload always exposes
+  // liveplayServer and never sets __isHostStub — do not assume "browser" and
+  // hide Local / file dialogs on the desktop app.
+  const api = g.electronAPI;
+  return !!(api?.liveplayServer && !api.__isHostStub);
 }
 
 /**
@@ -83,7 +91,27 @@ export function defaultServerUrl(): string {
   }
 }
 
-/** Compare server URLs, ignoring trailing slashes and surrounding space. */
+/**
+ * Compare server URLs for identity.
+ * Normalizes scheme (default http://), trailing slashes and host case so
+ * `127.0.0.1:4480` and `http://127.0.0.1:4480` are the same server. Treating
+ * them as different retargets clears the auth token and reconnects — which
+ * broke project open / server file browse on the desktop.
+ */
 export function isSameServerUrl(a: string, b: string): boolean {
-  return a.trim().replace(/\/+$/, '') === String(b).trim().replace(/\/+$/, '');
+  return normalizeServerUrl(a) === normalizeServerUrl(b);
+}
+
+function normalizeServerUrl(url: string): string {
+  let v = String(url ?? '').trim().replace(/\/+$/, '');
+  if (!v) return '';
+  if (!/^https?:\/\//i.test(v)) v = 'http://' + v;
+  try {
+    const u = new URL(v);
+    u.hash = '';
+    u.search = '';
+    return u.origin.toLowerCase();
+  } catch {
+    return v.toLowerCase();
+  }
 }

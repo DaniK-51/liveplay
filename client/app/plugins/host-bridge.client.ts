@@ -209,8 +209,7 @@ function buildStub(): ElectronAPI {
     liveplayServer: {
       getConfig: async () => {
         // /web on a LivePlay server: THAT origin is the show, no picker.
-        const path = location.pathname;
-        if (path === '/web' || path.startsWith('/web/')) {
+        if (isSameOriginWeb()) {
           return { mode: 'remote', remoteUrl: location.origin, localPort: 4480 };
         }
         // Standalone browser: persist the operator's choice. An empty
@@ -286,17 +285,18 @@ export default defineNuxtPlugin({
   // contract.
   enforce: 'pre',
   setup() {
-  if (!import.meta.client) return;
-
   const g = globalThis as any;
+  // Real preload (Electron) always wins — even if import.meta.client is odd.
   if (g.electronAPI?.liveplayServer) {
-    // Real Electron preload bridge — do not touch.
     g.__liveplayHost = 'desktop';
     return;
   }
+  if (!import.meta.client) return;
 
   // Browser (or an Electron shell without our preload): stub the contract.
   g.__liveplayHost = 'browser';
-  g.electronAPI = buildStub();
+  const stub = buildStub() as ElectronAPI & { __isHostStub?: boolean };
+  stub.__isHostStub = true;
+  g.electronAPI = stub;
   },
 });
