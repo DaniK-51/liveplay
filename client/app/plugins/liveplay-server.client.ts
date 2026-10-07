@@ -13,7 +13,7 @@ import { defineNuxtPlugin } from 'nuxt/app';
 import { useLiveplayServer } from '~/composables/useLiveplayServer';
 import { useShowControl } from '~/composables/useShowControl';
 import { useConnectionGuard } from '~/composables/useConnectionGuard';
-import { isHostedWebRemote } from '~/utils/host';
+import { isHostedWebRemote, isSameServerUrl } from '~/utils/host';
 
 export default defineNuxtPlugin(async () => {
   const server = useLiveplayServer();
@@ -40,7 +40,9 @@ export default defineNuxtPlugin(async () => {
       // Served from this server's own /web: the origin IS the target.
       // Do not let a stale config/URL retarget us away from it.
       if (isHostedWebRemote()) {
+        // setServerUrl locks to origin and dials (checkAuth + connect).
         server.setServerUrl(location.origin);
+        server.connect();
       } else {
         const cfg = await ep.getConfig();
         const url = (cfg.mode === 'remote' && cfg.remoteUrl)
@@ -67,7 +69,9 @@ export default defineNuxtPlugin(async () => {
       const url = cfg.mode === 'remote'
         ? cfg.remoteUrl
         : `http://127.0.0.1:${cfg.localPort ?? 4480}`;
-      if (url && url !== server.serverUrl) server.setServerUrl(url);
+      // isSameServerUrl, not `!==`: a trailing slash is the same server and
+      // must not count as a retarget (that path clears credentials + reconnects).
+      if (url && !isSameServerUrl(url, server.serverUrl)) server.setServerUrl(url);
     });
   } else {
     server.connect();

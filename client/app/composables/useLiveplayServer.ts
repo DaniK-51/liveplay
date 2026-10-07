@@ -125,8 +125,15 @@ function createClient() {
     // Same-origin web (http://host:4480/web): the page IS this server's UI.
     // Never retarget away — a stale localStorage URL from another session
     // would send the operator to the wrong house mid-show.
+    //
+    // Still dial: callers use setServerUrl to adopt a server (the startup
+    // plugin on /web). connect() runs checkAuth() first when this session
+    // has not asked what the server expects. Without that, the only reason
+    // a /web page ever talked to its own server was an incidental connect()
+    // inside WelcomeScreen's rejoin probe.
     if (isHostedWebRemote()) {
       serverUrl.value = location.origin;
+      connect();
       return;
     }
     // Is this a RE-TARGET or just someone naming the server we are already on?
