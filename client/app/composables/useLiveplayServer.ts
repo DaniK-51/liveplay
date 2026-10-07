@@ -147,15 +147,21 @@ function createClient() {
     if (typeof window !== 'undefined') {
       window.localStorage?.setItem('liveplay.serverUrl', url);
     }
-    if (retarget) {
-      // A different server is a different account list, so the token we hold is
-      // meaningless there — and worse than meaningless, since presenting it
-      // would fail in a way that looks like the new server is broken.
-      storeToken('');
-      authUser.value = null;
+
+    if (!retarget) {
+      // Same server. Keep the live session — do not disconnect or clear
+      // hasEverConnected (that forced a project refetch on every Apply click).
+      // Still refresh the auth posture: same URL does not mean the same
+      // account list, since people can sign in and out since the last ask.
+      void checkAuth().then(() => { if (!needsLogin.value) connect(); });
+      return;
     }
-    // Ask this server what it expects either way: same URL does not mean the
-    // same posture, since accounts can have been added or removed since.
+
+    // A different server is a different account list, so the token we hold is
+    // meaningless there — and worse than meaningless, since presenting it
+    // would fail in a way that looks like the new server is broken.
+    storeToken('');
+    authUser.value = null;
     authChecked.value = false;
     // URL change → treat as a brand-new session. Force re-fetch on next
     // onopen by clearing the first-connect guard.
