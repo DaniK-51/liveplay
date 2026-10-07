@@ -598,9 +598,16 @@ static crow::response serve_web_file(const std::string& url_path) {
     crow::response r{200, std::move(body)};
     r.add_header("Content-Type", web_mime_for(canon.string()));
     r.add_header("Access-Control-Allow-Origin", g_cors_allow_origin);
-    // Hashed asset filenames can cache hard; the shell must not.
-    if (path == "index.html") r.add_header("Cache-Control", "no-cache");
-    else                      r.add_header("Cache-Control", "public, max-age=31536000, immutable");
+    // Hashed Vite/Nuxt bundles may cache hard. The shell and locales are NOT
+    // content-hashed — a year of immutable would pin old UI strings after an
+    // installer upgrade. Other unhashed assets get a short max-age.
+    if (path.rfind("_nuxt/", 0) == 0 || path.rfind("assets/", 0) == 0) {
+        r.add_header("Cache-Control", "public, max-age=31536000, immutable");
+    } else if (path == "index.html" || path.rfind("locales/", 0) == 0) {
+        r.add_header("Cache-Control", "no-cache");
+    } else {
+        r.add_header("Cache-Control", "public, max-age=300");
+    }
     return r;
 }
 
