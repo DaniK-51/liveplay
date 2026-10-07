@@ -27,6 +27,8 @@ export interface ElectronAPI {
       selectAudioFiles: () => Promise<string[] | null>;
       readFile: (filePath: string) => Promise<{ success: boolean; data?: string; error?: string }>;
       readAudioFile: (filePath: string) => Promise<{ success: boolean; data?: number[]; error?: string }>;
+      /** Raw audio bytes for local playback decode (desktop only). */
+      loadAudioBuffer: (filePath: string) => Promise<ArrayBuffer>;
       writeFile: (filePath: string, data: string) => Promise<{ success: boolean; error?: string }>;
       writeBinaryFile: (filePath: string, data: ArrayBuffer | Uint8Array | number[]) => Promise<{ success: boolean; error?: string }>;
       showSaveArchiveDialog: (defaultName?: string) => Promise<string | null>;
@@ -113,7 +115,7 @@ export interface ElectronAPI {
       onApiUpdateCartItem: (callback: (event: any, data: { requestId: string; slot: number; updates: Record<string, any> }) => void) => void;
       onOpenFileAssociation: (callback: (event: any, data: { filePath: string; kind: 'liveplay' | 'lpa' }) => void) => void;
       getPendingOpenFile: () => Promise<{ filePath: string; kind: 'liveplay' | 'lpa' } | null>;
-      readMidiConfig: () => Promise<Record<string, any>>;
+      readMidiConfig: () => Promise<Record<string, any> | null>;
       writeMidiConfig: (config: Record<string, any>) => Promise<{ success: boolean }>;
       // Cart player window
       openCartPlayerWindow: (projectFolderPath: string) => Promise<void>;
@@ -127,6 +129,9 @@ export interface ElectronAPI {
       attachMixerWindow: () => void;
       onMixerWindowOpened: (callback: () => void) => void;
       onMixerWindowClosed: (callback: () => void) => void;
+      /** Dev-only state viewer (Electron). */
+      updateAppState: (state: any) => void;
+      isDevMode: () => Promise<boolean>;
       // UI mode ("show mode") sync across windows
       broadcastUiMode: (mode: 'edit' | 'playback') => void;
       onUiModeSet: (callback: (event: any, mode: 'edit' | 'playback') => void) => void;
@@ -135,7 +140,7 @@ export interface ElectronAPI {
         recentList: () => Promise<Array<{ path: string; name: string; folderPath: string; lastOpened: number }>>;
         recentAdd: (entry: { path: string; name?: string; folderPath?: string }) => Promise<Array<{ path: string; name: string; folderPath: string; lastOpened: number }>>;
         recentRemove: (path: string) => Promise<Array<{ path: string; name: string; folderPath: string; lastOpened: number }>>;
-        recentClear: () => Promise<Array<never>>;
+        recentClear: () => Promise<unknown[]>;
       };
 
     /** C++ audio-server lifecycle (spawned by Electron main only). */

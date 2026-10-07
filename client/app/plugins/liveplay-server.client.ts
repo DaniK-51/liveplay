@@ -42,7 +42,6 @@ export default defineNuxtPlugin(async () => {
       if (isSameOriginWeb()) {
         // setServerUrl locks to origin and dials (checkAuth + connect).
         server.setServerUrl(location.origin);
-        server.connect();
       } else {
         const cfg = await ep.getConfig();
         const url = (cfg.mode === 'remote' && cfg.remoteUrl)

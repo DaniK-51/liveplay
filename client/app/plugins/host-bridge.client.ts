@@ -18,15 +18,21 @@
 // ============================================================================
 import { defineNuxtPlugin } from 'nuxt/app';
 import type { ElectronAPI } from '~/types/electronApi';
+import { isSameOriginWeb } from '~/utils/host';
 
 /** Resolve to empty success — the shape preload's invoke handlers return. */
-const ok = async () => ({ success: true });
-const nullOk = async () => null;
-const emptyList = async () => [];
+const ok = async (): Promise<any> => ({ success: true });
+const nullOk = async (): Promise<any> => null;
+const emptyList = async (): Promise<any[]> => [];
+/** Desktop-only capability with no browser equivalent. */
 const unavailable = async (): Promise<never> => {
   throw new Error('not available in browser');
 };
-const falseOk = async () => ({ success: false, error: 'not available in browser' } as any);
+/** Explicit failure payload — never a fake success. */
+const falseOk = async (): Promise<any> => ({
+  success: false,
+  error: 'not available in browser',
+});
 
 /** Subscribe API that never fires and can be unsubscribed safely. */
 const noUnsub = () => {
@@ -36,33 +42,53 @@ const noUnsub = () => {
 const noListener = (..._args: any[]) => noUnsub;
 
 function buildStub(): ElectronAPI {
-  // Permissive stub: desktop-only methods resolve empty / throw `unavailable`.
-  // The cast is intentional — the contract is structural (ElectronAPI), but
-  // several success payloads cannot be manufactured outside Electron.
+  // Browser implementation of the ElectronAPI contract. Desktop-only
+  // methods resolve empty or throw `unavailable` — never pretend success.
   // Locales ship as static JSON under /locales/ (staged at build from
-  // client/locales by scripts/sync-web-root.js). Loaded lazily so first
-  // paint is not blocked on 21 files.
+  // client/locales by scripts/sync-web-root.js).
   let localeIndex: Array<{ code: string; name: string; direction: string }> | null = null;
   const localeData = new Map<string, any>();
 
+  /** Base URL for staged locale JSON (always under the app mount). */
+  function localesBase(): string {
+    if (isSameOriginWeb()) return '/web/locales/';
+    const base = (import.meta as any).env?.BASE_URL;
+    if (typeof base === 'string' && base && base !== './') {
+      return base.replace(/\/?$/, '/') + 'locales/';
+    }
+    return './locales/';
+  }
+
   async function fetchLocaleIndex() {
     if (localeIndex) return localeIndex;
-    // codes come from /locales/index.json (written by scripts/sync-web-root.js)
+    // codes come from locales/index.json (written by scripts/sync-web-root.js)
     // so this file never hardcodes the language list.
+    //
+    // Resolve from the /web mount, not the document URL: with baseURL './'
+    // an extension-less deep link makes './locales/...' 404 and we would
+    // silently ship zero languages.
+    const indexUrl = localesBase() + 'index.json';
     let codes: string[] = [];
     try {
-      const idx = await fetch('./locales/index.json');
+      const idx = await fetch(indexUrl);
       if (idx.ok) {
         const parsed = await idx.json();
         if (Array.isArray(parsed)) codes = parsed.filter((c) => typeof c === 'string');
+      } else {
+        console.error('[host-bridge] locales index missing', idx.status, indexUrl);
       }
-    } catch {
-      /* fall through */
+    } catch (e) {
+      console.error('[host-bridge] locales index fetch failed', indexUrl, e);
+    }
+    if (codes.length === 0) {
+      // Loud fallback: at least English, or the UI would show raw keys.
+      console.error('[host-bridge] falling back to locale list ["en"]');
+      codes = ['en'];
     }
     const entries = await Promise.all(
       codes.map(async (code) => {
         try {
-          const res = await fetch(`./locales/${code}.json`);
+          const res = await fetch(localesBase() + `${code}.json`);
           if (!res.ok) return null;
           const data = await res.json();
           localeData.set(code, data);
@@ -108,6 +134,7 @@ function buildStub(): ElectronAPI {
     selectAudioFiles: nullOk,
     readFile: falseOk,
     readAudioFile: falseOk,
+    loadAudioBuffer: unavailable,
     writeFile: falseOk,
     writeBinaryFile: falseOk,
     showSaveArchiveDialog: nullOk,
@@ -236,8 +263,8 @@ function buildStub(): ElectronAPI {
     updateAppState: () => {},
     isDevMode: async () => false,
 
-    // MIDI config — machine-local; browser keeps a silent stub for now.
-    readMidiConfig: nullOk,
+    // MIDI config — machine-local; browser has no equivalent yet.
+    readMidiConfig: async () => null,
     writeMidiConfig: ok,
 
     // Legacy local HTTP API bridge (main-process proxy)
@@ -249,7 +276,7 @@ function buildStub(): ElectronAPI {
     onStopItem: noListener,
     onTriggerCartSlot: noListener,
     onStopAllCues: noListener,
-  } as unknown as ElectronAPI;
+  };
 }
 
 export default defineNuxtPlugin({

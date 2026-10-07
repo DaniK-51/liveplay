@@ -492,7 +492,7 @@ crow::response json_fs_denied() {
 // there is no server picker in that mode by design.
 //
 // Path safety: the request path is resolved under g_web_root and the result
-// must stay there after weakly_canonical.
+// must stay there after fs::canonical (symlinks fully resolved).
 static std::string web_mime_for(const std::string& path) {
     const auto dot = path.rfind('.');
     if (dot == std::string::npos) return "application/octet-stream";

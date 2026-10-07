@@ -71,7 +71,7 @@ export function isSameOriginWeb(): boolean {
 /**
  * Default LivePlay server URL for this host.
  *
- * - Hosted web remote (`/web`): the origin that served the page.
+ * - Same-origin web remote (`/web`): the origin that served the page.
  * - Otherwise: `localStorage['liveplay.serverUrl']`, else `http://127.0.0.1:4480`.
  */
 export function defaultServerUrl(): string {

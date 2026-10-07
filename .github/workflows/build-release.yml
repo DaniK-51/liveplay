@@ -222,8 +222,10 @@ jobs:
             sleep 0.5
           done
           curl -fsS -o /dev/null http://127.0.0.1:4599/api/health
-          # /web redirects to the shell; shell and locales must not be immutable.
-          curl -fsSI http://127.0.0.1:4599/web | grep -i 'HTTP/'
+          # /web redirects to the shell (relative assets under baseURL './').
+          loc=$(curl -sI http://127.0.0.1:4599/web | tr -d '\r' | grep -i '^location:' || true)
+          echo "web location: $loc"
+          echo "$loc" | grep -q '/web/index.html' || { echo 'expected Location: /web/index.html' >&2; exit 1; }
           code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4599/web/index.html)
           test "$code" = "200"
           cache=$(curl -sI http://127.0.0.1:4599/web/locales/en.json | tr -d '\r' | grep -i cache-control || true)
@@ -232,8 +234,19 @@ jobs:
             echo 'locales must not be immutable' >&2
             exit 1
           fi
-          code=$(curl -s --path-as-is -o /dev/null -w '%{http_code}' http://127.0.0.1:4599/web/../users.json)
-          test "$code" = "403" -o "$code" = "404"
+          # The historical hole was a SIBLING directory sharing the web root's
+          # string prefix (web vs web-evil), not ../users.json. Stage one and
+          # require 403 from path_is_within — 404 can mean "route unmatched".
+          mkdir -p server/build/web-evil
+          echo secret > server/build/web-evil/secret.json
+          code=$(curl -s --path-as-is -o /dev/null -w '%{http_code}' \
+            http://127.0.0.1:4599/web/../web-evil/secret.json)
+          echo "sibling traversal: $code"
+          test "$code" = "403"
+          code=$(curl -s --path-as-is -o /dev/null -w '%{http_code}' \
+            http://127.0.0.1:4599/web/../users.json)
+          echo "parent traversal: $code"
+          test "$code" != "200"
 
       # electron-builder downloads the Electron binary + code-signing helpers
       # from GitHub at build time. Cache them so a transient DNS/network blip

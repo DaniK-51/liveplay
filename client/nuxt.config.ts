@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   devtools: {
@@ -40,7 +41,7 @@ export default defineNuxtConfig({
     define: {
       // Surfaced by the browser host stub (About / Welcome version chip).
       'import.meta.env.VITE_APP_VERSION': JSON.stringify(
-        process.env.npm_package_version || '2.5.1',
+        process.env.npm_package_version || appVersion(),
       ),
     },
     css: {
@@ -61,3 +62,14 @@ export default defineNuxtConfig({
 
   compatibilityDate: '2025-10-31'
 })
+
+/** Version from client/package.json — never a stale release literal. */
+function appVersion(): string {
+  try {
+    const pkgPath = new URL('./package.json', import.meta.url);
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    return pkg.version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
