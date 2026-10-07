@@ -203,6 +203,38 @@ jobs:
         working-directory: client
         run: npm run build
 
+      # /web is public static host + path containment. Fail the build if the
+      # shell is missing, cached wrongly, or a sibling-traversal reads through.
+      - name: Smoke browser UI at /web
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=./server/build/liveplay-server
+          test -x "$BIN"
+          test -f server/build/web/index.html
+          test -f server/build/web/locales/index.json
+          "$BIN" --port 4599 --bind 127.0.0.1 >/tmp/liveplay-smoke.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:4599/api/health >/dev/null && break
+            sleep 0.5
+          done
+          curl -fsS -o /dev/null http://127.0.0.1:4599/api/health
+          # /web redirects to the shell; shell and locales must not be immutable.
+          curl -fsSI http://127.0.0.1:4599/web | grep -i 'HTTP/'
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4599/web/index.html)
+          test "$code" = "200"
+          cache=$(curl -sI http://127.0.0.1:4599/web/locales/en.json | tr -d '\r' | grep -i cache-control || true)
+          echo "locales cache: $cache"
+          if echo "$cache" | grep -qi 'immutable'; then
+            echo 'locales must not be immutable' >&2
+            exit 1
+          fi
+          code=$(curl -s --path-as-is -o /dev/null -w '%{http_code}' http://127.0.0.1:4599/web/../users.json)
+          test "$code" = "403" -o "$code" = "404"
+
       # electron-builder downloads the Electron binary + code-signing helpers
       # from GitHub at build time. Cache them so a transient DNS/network blip
       # (e.g. "lookup github.com: no such host") doesn't have to re-fetch.

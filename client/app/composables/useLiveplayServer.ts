@@ -23,7 +23,7 @@
 // =====================================================================
 import { reactive, ref, shallowRef, computed } from 'vue';
 import type { Bus, BusDsp } from '~/types/project';
-import { defaultServerUrl, isHostedWebRemote, isSameServerUrl } from '~/utils/host';
+import { defaultServerUrl, isSameOriginWeb, isSameServerUrl } from '~/utils/host';
 import type {
   CueId,
   DeviceId,
@@ -131,7 +131,7 @@ function createClient() {
     // has not asked what the server expects. Without that, the only reason
     // a /web page ever talked to its own server was an incidental connect()
     // inside WelcomeScreen's rejoin probe.
-    if (isHostedWebRemote()) {
+    if (isSameOriginWeb()) {
       serverUrl.value = location.origin;
       connect();
       return;

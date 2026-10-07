@@ -28,11 +28,20 @@ if (!fs.existsSync(path.join(LOCALES_SRC, 'en.json'))) {
 }
 fs.rmSync(LOCALES_OUT, { recursive: true, force: true });
 fs.mkdirSync(LOCALES_OUT, { recursive: true });
+const codes = [];
 for (const name of fs.readdirSync(LOCALES_SRC)) {
-  if (!name.endsWith('.json')) continue;
+  if (!name.endsWith('.json') || name === 'index.json') continue;
   fs.copyFileSync(path.join(LOCALES_SRC, name), path.join(LOCALES_OUT, name));
+  codes.push(name.replace(/\.json$/, ''));
 }
-console.log(`[sync-web-root] ${path.relative(REPO_ROOT, LOCALES_SRC)} -> ${path.relative(REPO_ROOT, LOCALES_OUT)}`);
+codes.sort();
+// index.json is generated — the browser stub must not hardcode the language list.
+fs.writeFileSync(
+  path.join(LOCALES_OUT, 'index.json'),
+  JSON.stringify(codes, null, 2) + '\n',
+  'utf8',
+);
+console.log(`[sync-web-root] ${path.relative(REPO_ROOT, LOCALES_SRC)} -> ${path.relative(REPO_ROOT, LOCALES_OUT)} (${codes.length} locales)`);
 
 // 2. Full web root for the C++ server / installer layout.
 fs.rmSync(DEST, { recursive: true, force: true });

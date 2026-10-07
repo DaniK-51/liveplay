@@ -151,7 +151,7 @@
               ? t('welcome.connectedTo', { url: serverUrlDisplay })
               : t('welcome.connectedLocal') }}
           <!-- Same-origin /web: this server IS the show — no picker. -->
-          <button v-if="!isHostedWebRemote()" class="link-button" @click="changeMode">{{ t('welcome.changeMode') }}</button>
+          <button v-if="!isSameOriginWeb()" class="link-button" @click="changeMode">{{ t('welcome.changeMode') }}</button>
         </p>
         <div class="welcome-actions">
           <button class="welcome-button primary" @click="handleNewProject">
@@ -235,7 +235,7 @@
 <script setup lang="ts">
 import { version as buildVersion } from '~~/package.json';
 import ServerFilePickerModal from './ServerFilePickerModal.vue';
-import { isDesktopHost, isHostedWebRemote } from '~/utils/host';
+import { isDesktopHost, isSameOriginWeb } from '~/utils/host';
 
 const { createNewProject, openProject, tryRejoinExistingProject } = useProject();
 const { t } = useLocalization();
@@ -367,7 +367,7 @@ onMounted(async () => {
         if (welcomeIntent === 'new') handleNewProject();
         else                          handleOpenProject();
       });
-    } else if (isHostedWebRemote()) {
+    } else if (isSameOriginWeb()) {
       // Served from http://<server>:4480/web — THIS server is the show.
       // No mode picker, no address entry. Rejoin the open project if any,
       // otherwise land on the project stage.

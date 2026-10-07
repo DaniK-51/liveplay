@@ -13,16 +13,20 @@
 //   openExternal and version have real web implementations.
 //
 // UI gating goes through app/utils/host.ts (isDesktopHost / isBrowserHost /
-// isHostedWebRemote). Never duck-type window.electronAPI: the stub has the
+// isSameOriginWeb). Never duck-type window.electronAPI: the stub has the
 // same method names on purpose.
 // ============================================================================
 import { defineNuxtPlugin } from 'nuxt/app';
+import type { ElectronAPI } from '~/types/electronApi';
 
 /** Resolve to empty success — the shape preload's invoke handlers return. */
 const ok = async () => ({ success: true });
 const nullOk = async () => null;
 const emptyList = async () => [];
-const falseOk = async () => ({ success: false, error: 'not available in browser' });
+const unavailable = async (): Promise<never> => {
+  throw new Error('not available in browser');
+};
+const falseOk = async () => ({ success: false, error: 'not available in browser' } as any);
 
 /** Subscribe API that never fires and can be unsubscribed safely. */
 const noUnsub = () => {
@@ -31,7 +35,10 @@ const noUnsub = () => {
 };
 const noListener = (..._args: any[]) => noUnsub;
 
-function buildStub() {
+function buildStub(): ElectronAPI {
+  // Permissive stub: desktop-only methods resolve empty / throw `unavailable`.
+  // The cast is intentional — the contract is structural (ElectronAPI), but
+  // several success payloads cannot be manufactured outside Electron.
   // Locales ship as static JSON under /locales/ (staged at build from
   // client/locales by scripts/sync-web-root.js). Loaded lazily so first
   // paint is not blocked on 21 files.
@@ -40,10 +47,18 @@ function buildStub() {
 
   async function fetchLocaleIndex() {
     if (localeIndex) return localeIndex;
-    const codes = [
-      'ar', 'bn', 'de', 'el', 'en', 'es', 'fa', 'fr', 'hi', 'it', 'ja',
-      'ko', 'no', 'pt', 'ro', 'ru', 'sq', 'sv', 'tr', 'ur', 'zh',
-    ];
+    // codes come from /locales/index.json (written by scripts/sync-web-root.js)
+    // so this file never hardcodes the language list.
+    let codes: string[] = [];
+    try {
+      const idx = await fetch('./locales/index.json');
+      if (idx.ok) {
+        const parsed = await idx.json();
+        if (Array.isArray(parsed)) codes = parsed.filter((c) => typeof c === 'string');
+      }
+    } catch {
+      /* fall through */
+    }
     const entries = await Promise.all(
       codes.map(async (code) => {
         try {
@@ -112,7 +127,7 @@ function buildStub() {
     removeImportProgressListener: noListener,
     checkFfmpeg: async () => ({ available: false, path: null }),
     searchYouTube: emptyList,
-    downloadYouTubeAudio: falseOk,
+    downloadYouTubeAudio: unavailable,
 
     // Menu / chrome — never fire in a browser tab.
     onMenuNewProject: noListener,
@@ -150,13 +165,13 @@ function buildStub() {
     // File associations / detached windows / mode broadcast
     onOpenFileAssociation: noListener,
     getPendingOpenFile: nullOk,
-    openCartPlayerWindow: falseOk,
+    openCartPlayerWindow: unavailable,
     attachCartPlayerWindow: () => {},
     getCartWindowProjectData: nullOk,
     onCartPlayerWindowOpened: noListener,
     onCartPlayerWindowClosed: noListener,
     onCartWindowProjectUpdate: noListener,
-    openMixerWindow: falseOk,
+    openMixerWindow: unavailable,
     attachMixerWindow: () => {},
     onMixerWindowOpened: noListener,
     onMixerWindowClosed: noListener,
@@ -206,15 +221,15 @@ function buildStub() {
       solicit: ok,
       onServers: () => noUnsub,
       recentList: emptyList,
-      recentAdd: ok,
-      recentRemove: ok,
+      recentAdd: emptyList,
+      recentRemove: emptyList,
     },
 
     liveplayProjects: {
       recentList: emptyList,
-      recentAdd: ok,
-      recentRemove: ok,
-      recentClear: ok,
+      recentAdd: emptyList,
+      recentRemove: emptyList,
+      recentClear: emptyList,
     },
 
     // Dev-only state viewer
@@ -234,10 +249,16 @@ function buildStub() {
     onStopItem: noListener,
     onTriggerCartSlot: noListener,
     onStopAllCues: noListener,
-  };
+  } as unknown as ElectronAPI;
 }
 
-export default defineNuxtPlugin(() => {
+export default defineNuxtPlugin({
+  name: 'liveplay-host-bridge',
+  // Must run before liveplay-server.client.ts so isSameOriginWeb() and the
+  // stub exist when the connection plugin dials. Filename order is not a
+  // contract.
+  enforce: 'pre',
+  setup() {
   if (!import.meta.client) return;
 
   const g = globalThis as any;
@@ -250,4 +271,5 @@ export default defineNuxtPlugin(() => {
   // Browser (or an Electron shell without our preload): stub the contract.
   g.__liveplayHost = 'browser';
   g.electronAPI = buildStub();
+  },
 });

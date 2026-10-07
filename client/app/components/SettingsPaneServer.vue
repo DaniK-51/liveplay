@@ -8,7 +8,7 @@
          Hidden when the page is served from a LivePlay server's own /web:
          that server IS the target — there is nothing to choose.
          ================================================================ -->
-    <section v-if="!isHostedWebRemote()" class="settings-field">
+    <section v-if="!isSameOriginWeb()" class="settings-field">
       <label class="settings-label">
         <span class="material-symbols-rounded">lan</span>
         {{ t('serverSettings.title') }}
@@ -19,7 +19,7 @@
         <span v-else>{{ t('serverSettings.disconnected') }}</span>
       </p>
 
-      <div v-if="hasDesktopHost" class="settings-modes">
+      <div v-if="isDesktopHost()" class="settings-modes">
         <label class="settings-label settings-label--checkbox">
           <input type="radio" value="local" v-model="draftMode" />
           {{ t('serverSettings.localModeDesc') }}
@@ -30,7 +30,7 @@
         </label>
       </div>
 
-      <template v-if="hasDesktopHost && draftMode === 'local'">
+      <template v-if="isDesktopHost() && draftMode === 'local'">
         <label class="settings-label">{{ t('serverSettings.localPort') }}</label>
         <input class="settings-input" type="number" min="1" max="65535"
                v-model.number="draftLocalPort" />
@@ -54,7 +54,7 @@
         <button class="settings-btn" @click="server.connect()">
           {{ t('serverSettings.retryConnect') }}
         </button>
-        <button v-if="hasDesktopHost && draftMode === 'local'"
+        <button v-if="isDesktopHost() && draftMode === 'local'"
                 class="settings-btn" @click="restartLocal">
           {{ t('serverSettings.restartEngine') }}
         </button>
@@ -198,17 +198,17 @@
 // Outputs pane in P3c, where hardware belongs now that buses and the output map
 // exist; the serverSettings.outputDevices / open / noDevices keys stay in the
 // locales for it rather than being removed and re-added.
-import { isDesktopHost, isHostedWebRemote, isSameServerUrl } from '~/utils/host';
+import { isDesktopHost, isSameOriginWeb, isSameServerUrl } from '~/utils/host';
 const { t } = useLocalization();
 const server = useLiveplayServer();
 
 const electronApi: any = (globalThis as any).electronAPI?.liveplayServer;
-// Duck-typing `!!electronApi` is no longer enough: the browser bridge installs
-// a stub so call sites don't crash. Local-mode UI is Electron-only.
-const hasDesktopHost = isDesktopHost();
+// Duck-typing `!!electronAPI` is never enough: the browser host installs a
+// stub with the same method names. Local-mode UI is desktop-only.
+
 
 // ---- 1. Connection ---------------------------------------------------
-const draftMode      = ref<'local' | 'remote'>(hasDesktopHost ? 'local' : 'remote');
+const draftMode      = ref<'local' | 'remote'>(isDesktopHost() ? 'local' : 'remote');
 const draftRemoteUrl = ref('http://127.0.0.1:4480');
 const draftLocalPort = ref(4480);
 const serverStatus   = ref<{ running: boolean; pid?: number } | null>(null);
@@ -220,7 +220,7 @@ const statusClass = computed(() => ({
 }));
 
 async function loadConnection() {
-  if (!hasDesktopHost) {
+  if (!isDesktopHost()) {
     // A browser cannot spawn a binary, so only remote mode is meaningful.
     draftMode.value = 'remote';
     draftRemoteUrl.value = server.serverUrl;
@@ -236,7 +236,7 @@ async function loadConnection() {
 
 async function applyConnection() {
   const nextUrl = draftRemoteUrl.value.trim();
-  if (hasDesktopHost && electronApi) {
+  if (isDesktopHost() && electronApi) {
     await electronApi.setConfig({
       mode:      draftMode.value,
       remoteUrl: nextUrl,
@@ -251,7 +251,7 @@ async function applyConnection() {
   }
 }
 
-async function restartLocal() { if (hasDesktopHost && electronApi) await electronApi.restart(); }
+async function restartLocal() { if (isDesktopHost() && electronApi) await electronApi.restart(); }
 
 // ---- 2. This connection's meter rate ---------------------------------
 // Offered as a short list rather than a free number: the useful values are the
@@ -379,7 +379,7 @@ async function save() {
 
 onMounted(() => {
   loadConnection();
-  if (hasDesktopHost && electronApi) {
+  if (isDesktopHost() && electronApi) {
     stopStatusListener = electronApi.onStateChange((p: any) => {
       serverStatus.value = { running: p.running, pid: p.pid };
     });

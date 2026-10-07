@@ -40,7 +40,7 @@ export default defineNuxtConfig({
     define: {
       // Surfaced by the browser host stub (About / Welcome version chip).
       'import.meta.env.VITE_APP_VERSION': JSON.stringify(
-        process.env.npm_package_version || '2.5.0',
+        process.env.npm_package_version || '2.5.1',
       ),
     },
     css: {

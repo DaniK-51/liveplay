@@ -61,7 +61,7 @@ export function isBrowserHost(): boolean {
  * the UI must use `location.origin` and must not offer a server picker.
  * Always false in Electron (desktop has its own connection settings).
  */
-export function isHostedWebRemote(): boolean {
+export function isSameOriginWeb(): boolean {
   if (isDesktopHost()) return false;
   if (typeof location === 'undefined') return false;
   const path = location.pathname;
@@ -75,7 +75,7 @@ export function isHostedWebRemote(): boolean {
  * - Otherwise: `localStorage['liveplay.serverUrl']`, else `http://127.0.0.1:4480`.
  */
 export function defaultServerUrl(): string {
-  if (isHostedWebRemote()) return location.origin;
+  if (isSameOriginWeb()) return location.origin;
   try {
     return localStorage.getItem('liveplay.serverUrl') || 'http://127.0.0.1:4480';
   } catch {

@@ -127,7 +127,7 @@ const selectedUploaded    = ref<string[]>([]);
 const uploadedAnchor      = { i: -1 };
 
 // Local file picker (used when server is local — same machine, so local paths = server paths)
-const hasDesktopHost = isDesktopHost();
+
 const localPicked  = ref<string[]>([]);
 const selectedLocal = ref<string[]>([]);
 const localAnchor   = { i: -1 };
