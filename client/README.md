@@ -37,7 +37,7 @@ Detached cart/mixer windows are additional controllers of the same server. Windo
 | `app/plugins/host-bridge.client.ts` | Picks the desktop bridge (Electron preload vs browser stub) |
 | `app/utils/host.ts` | Host/target detection (`isDesktopHost`, `isHostedWebRemote`, …) |
 | `app/utils/` | Meter geometry, DSP display math and shared UI helpers |
-| `locales/` | Application locale JSON |
+| `locales/` | Application locale JSON (the only copy; browser staging is build-time) |
 | `tests/` | Window-bounds and settings-placement checks |
 
 ### Host and target (`app/utils/host.ts`)
@@ -87,7 +87,7 @@ The renderer is generated into `client/.output/`. electron-builder packages it w
 - UI changes to pan/DSP use live control while dragging and persisted patches for durable state.
 - Server `custom_action_http` notifications are executed by connected desktop clients. Multiple clients can execute the same request; see [findings](../docs/API_AUDIT.md).
 - Add desktop capabilities through the explicit preload bridge and corresponding IPC handler.
-- Translation keys belong in `locales/en.json`; synchronize missing keys using `node scripts/sync-locale-keys.js` from the repository root.
+- Translation keys belong in `locales/en.json`; synchronize missing keys using `node scripts/sync-locale-keys.js` from the repository root. Do not copy them into `public/` in git — `scripts/sync-web-root.js` stages `client/locales` into the Nuxt output for the browser host.
 - Keep EQ/dynamics visualization math aligned with the C++ DSP implementation.
 
 Run the [targeted checks](../docs/DEVELOPMENT.md#checks) relevant to a change. The root/client manifests do not define a general lint or test script.

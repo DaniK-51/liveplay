@@ -9,6 +9,9 @@ client/.nuxt/
 client/.output/
 dist/
 client/dist/
+# Locales live only in client/locales/. The browser host stages a copy into
+# the Nuxt output (and public/ during generate) — never commit it.
+client/public/locales/
 dist-electron/
 client/dist-electron/
 .env
