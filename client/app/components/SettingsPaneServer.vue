@@ -235,19 +235,25 @@ async function loadConnection() {
 }
 
 async function applyConnection() {
-  const nextUrl = draftRemoteUrl.value.trim();
+  const nextRemote = draftRemoteUrl.value.trim();
   if (isDesktopHost() && electronApi) {
     await electronApi.setConfig({
       mode:      draftMode.value,
-      remoteUrl: nextUrl,
+      remoteUrl: nextRemote,
       localPort: draftLocalPort.value,
     });
   }
+  // Effective target follows the MODE, not the remote-URL field. Applying
+  // Local must dial the local engine port — never yank the socket to a stale
+  // remote draft (Electron regression if we always used nextRemote).
+  const target = draftMode.value === 'local'
+    ? `http://127.0.0.1:${draftLocalPort.value || 4480}`
+    : nextRemote;
   // Only retarget when the address actually changed. setServerUrl() clears
   // hasEverConnected / authChecked even for a same-URL write, which used to
   // force a reconnect + project refetch on every Apply click on the desktop.
-  if (nextUrl && !isSameServerUrl(nextUrl, server.serverUrl)) {
-    server.setServerUrl(nextUrl);
+  if (target && !isSameServerUrl(target, server.serverUrl)) {
+    server.setServerUrl(target);
   }
 }
 
